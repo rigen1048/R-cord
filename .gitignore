@@ -1,0 +1,7 @@
+/target
+/frontend/target
+/src-tauri/target
+/dist
+/bin
+node_modules
+*.log

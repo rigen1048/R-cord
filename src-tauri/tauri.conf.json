@@ -1,0 +1,30 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Rcord",
+  "version": "0.1.0",
+  "identifier": "com.rcord.app",
+  "build": {
+    "beforeDevCommand": "trunk serve --config frontend/Trunk.toml frontend/index.html",
+    "beforeBuildCommand": "trunk build --config frontend/Trunk.toml frontend/index.html",
+    "devUrl": "http://localhost:1420",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "title": "Rcord",
+        "width": 1100,
+        "height": 720
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": false,
+    "targets": "all",
+    "icon": []
+  }
+}
