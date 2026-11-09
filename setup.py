@@ -21,7 +21,11 @@ import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
-SYSROOT = Path("/opt/data/opt/tauri-sys")
+# This dev box builds against a userland sysroot; on a normal desktop the
+# system toolchain + distro webkit packages are used instead.
+_HOST_SYSROOT = Path("/opt/data/opt/tauri-sys")
+HAS_SYSROOT = _HOST_SYSROOT.exists()
+SYSROOT = _HOST_SYSROOT if HAS_SYSROOT else Path("/")
 SYSLIB = SYSROOT / "usr/lib/x86_64-linux-gnu"
 DIST = ROOT / "package"
 APPDIR = DIST / "AppDir"
@@ -44,16 +48,18 @@ EXCLUDE_LIBS = {
 
 def env():
     e = dict(os.environ)
-    e["PKG_CONFIG_PATH"] = f"{SYSLIB}/pkgconfig:{SYSROOT}/usr/share/pkgconfig"
-    e["PKG_CONFIG_SYSROOT_DIR"] = str(SYSROOT)
-    e["PKG_CONFIG_ALLOW_SYSTEM_CFLAGS"] = "1"
-    e["PKG_CONFIG_ALLOW_SYSTEM_LIBS"] = "1"
-    e["LD_LIBRARY_PATH"] = str(SYSLIB)
-    e["RUSTUP_HOME"] = "/opt/data/.rustup"
-    e["CARGO_HOME"] = "/opt/data/.cargo"
-    e["PATH"] = f"{ROOT}/bin:{SYSROOT}/usr/bin:" + e["PATH"]
-    # appimagetool shells out to `file`; point its magic db at the sysroot copy
-    e["MAGIC"] = str(SYSROOT / "usr/share/misc/magic.mgc")
+    e["PATH"] = f"{ROOT}/bin:" + e["PATH"]
+    if HAS_SYSROOT:
+        e["PKG_CONFIG_PATH"] = f"{SYSLIB}/pkgconfig:{SYSROOT}/usr/share/pkgconfig"
+        e["PKG_CONFIG_SYSROOT_DIR"] = str(SYSROOT)
+        e["PKG_CONFIG_ALLOW_SYSTEM_CFLAGS"] = "1"
+        e["PKG_CONFIG_ALLOW_SYSTEM_LIBS"] = "1"
+        e["LD_LIBRARY_PATH"] = str(SYSLIB)
+        e["RUSTUP_HOME"] = "/opt/data/.rustup"
+        e["CARGO_HOME"] = "/opt/data/.cargo"
+        e["PATH"] = f"{ROOT}/bin:{SYSROOT}/usr/bin:" + os.environ["PATH"]
+        # appimagetool shells out to `file`; magic db from the sysroot copy
+        e["MAGIC"] = str(SYSROOT / "usr/share/misc/magic.mgc")
     e.pop("RUSTFLAGS", None)
     return e
 
@@ -244,10 +250,30 @@ def install_desktop(appimage: Path):
     print(f"Launcher:  {appsdir / (APP_ID + '.desktop')}")
 
 
+def preflight():
+    missing = [c for c in ("cargo", "trunk", "file")
+               if shutil.which(c, path=env()["PATH"]) is None]
+    if missing:
+        hints = {
+            "cargo": "install rustup (https://rustup.rs) + `rustup target add wasm32-unknown-unknown`",
+            "trunk": "cargo install trunk  (or grab the prebuilt binary from trunk-rs releases)",
+            "file": "install your distro's `file` package (needed by appimagetool)",
+        }
+        for c in missing:
+            print(f"missing: {c} — {hints[c]}")
+        sys.exit(1)
+    if not HAS_SYSROOT:
+        r = subprocess.run(["pkg-config", "--exists", "webkit2gtk-4.1"])
+        if r.returncode != 0:
+            sys.exit("missing webkit2gtk-4.1 dev files — install your distro's "
+                     "libwebkit2gtk-4.1-dev, libgtk-3-dev, libasound2-dev")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--skip-desktop-install", action="store_true")
     args = ap.parse_args()
+    preflight()
     DIST.mkdir(exist_ok=True)
     build()
     assemble_appdir()
